@@ -1,4 +1,5 @@
 #include <cassert>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -119,6 +120,10 @@ std::string formatv(const char *fmt, Args &&... args) {
   return ret;
 }
 
+#define pdbg(fmt, ...)                              \
+  std::cerr << formatv("%s: [%s:%s]" fmt, __LINE__, \
+      wis.get_lineno(), wis.get_column(), ##__VA_ARGS__)
+
 #if 0
 template <class T>
 class error_or : public std::optional<T> {
@@ -151,10 +156,13 @@ class wrapped_istream {
   std::istream &is;
 
   void advance_cursor(char ch) {
-    if (ch == '\n') {
+    if (ch == '\n' || ch == ';') {
       lineno++;
       column = 0;
       lines.emplace_back();
+      if (ch == ';')
+        while (is.get() != '\n')
+          ;
     } else {
       lines.back().push_back(ch);
       column++;
@@ -166,9 +174,9 @@ public:
     lines.emplace_back();
   }
 
-  bool meet_endl() const {
+  bool endl() const {
     char ch = is.peek();
-    if (ch == '\n') return true;
+    if (ch == '\n' || ch == ';') return true;
     return !is.good();
   }
 
@@ -244,14 +252,14 @@ class TMParser {
     std::cerr << "error at line " << (wis.get_lineno() + 1)
               << " column " << (wis.get_column() + 1)
               << ": " << msg << "\n";
-    unsigned col = wis.get_column();
     std::cerr << wis.get_line(tok.lineno);
     if (tok.lineno == wis.get_lineno()) {
       char ch = wis.peek();
       if (ch != '\n') std::cerr << ch;
     }
     std::cerr << '\n';
-    for (unsigned i = 0; i < col; i++) std::cerr << " ";
+    for (unsigned i = 0; i < tok.column; i++)
+      std::cerr << " ";
     for (unsigned i = 0; i < tok.size(); i++)
       std::cerr << "^";
     std::cerr << '\n';
@@ -280,36 +288,64 @@ private:
     return wis.good();
   }
 
-  static StringToken parseState(wrapped_istream &wis) {
-    StringToken state;
-    while (!wis.meet_endl()) {
+  static StringToken parseStringToken(wrapped_istream &wis,
+      std::function<bool(char)> tester) {
+    StringToken token;
+    token.lineno = wis.get_lineno();
+    token.column = wis.get_column();
+    while (!wis.endl()) {
       char ch = wis.peek();
-      if (std::isalnum(ch) || ch == '_') {
+      if (tester(ch)) {
         wis.ignore();
-        state.push_back(ch);
+        token.push_back(ch);
       } else
         break;
     }
+    return token;
+  }
+
+  static StringToken parseState(wrapped_istream &wis) {
+    StringToken state = parseStringToken(wis, [](char ch) {
+      return std::isalnum(ch) || ch == '_';
+    });
 
     if (state.size() == 0)
       report_error_here("expected state here", wis);
     return state;
   }
 
-  static StringToken parseSymbol(wrapped_istream &wis) {
-    StringToken symbol;
-    while (!wis.meet_endl()) {
-      char ch = wis.peek();
-      if (std::isprint(ch) && ch != ' ' && ch != ',' &&
-          ch != ';' && ch != '*' && ch != '_') {
-        wis.ignore();
-        symbol.push_back(ch);
-      } else
-        break;
-    }
+  static StringToken parseActions(wrapped_istream &wis) {
+    StringToken symbol = parseStringToken(wis, [](char ch) {
+      return ch == 'l' || ch == 'r' || ch == '*';
+    });
 
     if (symbol.size() == 0)
-      report_error_here("expected symbol here", wis);
+      report_error_here("expected input symbol here", wis);
+    return symbol;
+  }
+
+  static StringToken parseInputSymbol(
+      wrapped_istream &wis) {
+    StringToken symbol = parseStringToken(wis, [](char ch) {
+      return std::isprint(ch) && ch != ' ' && ch != ',' &&
+             ch != ';' && ch != '{' && ch != '}' &&
+             ch != '*' && ch != '_';
+    });
+
+    if (symbol.size() == 0)
+      report_error_here("expected input symbol here", wis);
+    return symbol;
+  }
+
+  static StringToken parseTapeSymbol(wrapped_istream &wis) {
+    StringToken symbol = parseStringToken(wis, [](char ch) {
+      return std::isprint(ch) && ch != ' ' && ch != ',' &&
+             ch != ';' && ch != '{' && ch != '}' &&
+             ch != '*';
+    });
+
+    if (symbol.size() == 0)
+      report_error_here("expected tape symbol here", wis);
     return symbol;
   }
 
@@ -317,18 +353,26 @@ private:
       wrapped_istream &wis,
       std::function<StringToken(wrapped_istream &)>
           extractor) {
+    pdbg("[parseStringArray] erase blank\n");
     erase_blank(wis);
+    pdbg("[parseStringArray] after erase blank, '%s'\n",
+        wis.peek());
     if (wis.get() != '{')
       report_error_here(
           "expected '{' here, parse it anyway", wis);
 
     std::vector<StringToken> retSet;
-    while (!wis.meet_endl()) {
+    while (!wis.endl()) {
       StringToken s = extractor(wis);
+      pdbg(
+          "[parseStringArray] extract '%s'-'%s' "
+          "[%s:%s:%s]\n",
+          std::string(s), wis.peek(), s.lineno, s.column,
+          s.size());
       if (s.size() == 0) { continue; }
       retSet.push_back(s);
-      bool safe = erase_blank(wis);
-      if (!safe) break;
+      erase_blank(wis);
+      if (wis.endl()) break;
 
       char ch = wis.get();
       if (ch == '}')
@@ -340,6 +384,8 @@ private:
     }
 
     erase_blank(wis);
+    pdbg("[parseStringArray] final blank '%s'\n",
+        wis.peek());
     return retSet;
   }
 
@@ -348,22 +394,39 @@ private:
     return parseStringArray(wis, &parseState);
   }
 
-  static std::vector<StringToken> parseSymbolArray(
+  static std::vector<StringToken> parseInputSymbolArray(
       wrapped_istream &wis) {
-    return parseStringArray(wis, &parseSymbol);
+    return parseStringArray(wis, &parseInputSymbol);
+  }
+
+  static std::vector<StringToken> parseTapeSymbolArray(
+      wrapped_istream &wis) {
+    return parseStringArray(wis, &parseTapeSymbol);
   }
 
 public:
   TMParser() {}
 
-  TuringMachine parseTMFile(wrapped_istream &wis) {
+  TuringMachine parseTMFile(std::istream &is) {
+    wrapped_istream wis(is);
     // a naive parser
     unsigned preseted_nTapes = -1;
     while (wis.good()) {
+      pdbg("[mainloop] of parser's main while loop\n");
       erase_blank(wis);
+      pdbg("[mainloop] erase initial blank, '%s'\n",
+          wis.peek());
 
-      if (wis.get() == '#') {
+      if (wis.endl()) {
+        pdbg(
+            "[mainloop.endl] meet endl '%s'\n", wis.peek());
+        wis.get();
+      } else if (wis.peek() == '#') {
+        wis.ignore();
+        pdbg("[mainloop.#] erase blank\n");
         erase_blank(wis);
+        pdbg("[mainloop.#] after erase blank '%s'\n",
+            wis.peek());
         char ch = wis.get();
         switch (ch) {
         case 'Q':
@@ -371,15 +434,18 @@ public:
         case 'G':
         case 'F': {
           erase_blank_until(wis, '=');
+          pdbg("[mainloop.#|=] after erase blank '%s'\n",
+              wis.peek());
           std::vector<StringToken> sv =
               (ch == 'Q' || ch == 'F')
                   ? parseStateArray(wis)
-                  : parseSymbolArray(wis);
+                  : (ch == 'S' ? parseInputSymbolArray(wis)
+                               : parseTapeSymbolArray(wis));
 
           if (ch == 'Q') {
             states = std::move(sv);
             unsigned counter = 0;
-            for (const StringToken &state : sv)
+            for (const StringToken &state : states)
               stateIdMap[state] = counter++;
           } else if (ch == 'F') {
             finalStates = std::move(sv);
@@ -413,6 +479,7 @@ public:
           }
           erase_blank_until(wis, '=');
           erase_blank(wis);
+          pdbg("[mainloop.#q0] next '%s'\n", wis.peek());
           initState = parseState(wis);
           break;
         case 'B':
@@ -439,20 +506,21 @@ public:
           break;
         }
 
-        while (!wis.meet_endl()) wis.ignore();
+        while (!wis.endl()) wis.ignore();
         wis.ignore();
       } else {
+        pdbg("[mainloop.action], next '%s'\n", wis.peek());
         DeltaEntry e;
         e.curState = parseState(wis);
         erase_blank(wis);
-        e.curSymbols = parseSymbol(wis);
+        e.curSymbols = parseTapeSymbol(wis);
         erase_blank(wis);
-        e.nxtSymbols = parseSymbol(wis);
+        e.nxtSymbols = parseTapeSymbol(wis);
         erase_blank(wis);
-        e.actions = parseState(wis);
+        e.actions = parseActions(wis);
         erase_blank(wis);
         e.nxtState = parseState(wis);
-        while (!wis.meet_endl()) wis.ignore();
+        while (!wis.endl()) wis.ignore();
         wis.ignore();
 
         const std::vector<const StringToken *> sv = {
@@ -495,22 +563,22 @@ public:
     for (const StringToken &s : finalStates) {
       if (stateIdMap.find(s) == stateIdMap.end())
         report_error(s,
-            formatv("cannot find state %s in #Q",
+            formatv("cannot find state '%s' in #Q from #F",
                 std::string(s)),
             wis);
     }
     for (const DeltaEntry &e : delta) {
       if (stateIdMap.find(e.nxtState) == stateIdMap.end())
         report_error(e.nxtState,
-            formatv("cannot find state %s in #Q",
+            formatv("cannot find state '%s' in actions",
                 std::string(e.nxtState)),
             wis);
     }
 
     if (stateIdMap.find(initState) == stateIdMap.end())
       report_error(initState,
-          formatv(
-              "cannot find state %s in #Q", std::string(initState)),
+          formatv("cannot find state %s (=#q0) in #Q",
+              std::string(initState)),
           wis);
 
     if (nTapes == -1u) {
@@ -545,4 +613,10 @@ public:
   }
 };
 
-int main() { return 0; }
+int main(int argc, const char *argv[]) {
+  std::ifstream ifs(argv[1]);
+  TMParser parser;
+  auto TM = parser.parseTMFile(ifs);
+  TM.run();
+  return 0;
+}

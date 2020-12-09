@@ -7,7 +7,7 @@ APP    := turing
 
 $(O)/%.o: %.cc
 	mkdir -p $(@D)
-	g++ -MMD -c $^ -o $@
+	g++ -g -MMD -c $^ -o $@
 
 all: $(APP)
 $(APP): $(OFILES)
