@@ -140,8 +140,7 @@ public:
   }
 
   void set_input(const std::string &s) {
-    for (unsigned i = 0; i < s.size(); i++) { ; }
-    tapes.at(0).set(s);
+    if (tapes.size()) tapes.at(0).set(s);
   }
 
   std::vector<char> getCurSymbols() {
@@ -368,7 +367,7 @@ class wrapped_istream {
       column = 0;
       lines.emplace_back();
       if (ch == ';')
-        while (is.get() != '\n')
+        while (is.good() && is.get() != '\n')
           ;
     } else {
       lines.back().push_back(ch);
@@ -688,7 +687,7 @@ public:
       char ch = input[i];
       if (valid_chars.find(ch) != valid_chars.end())
         continue;
-      if (ch == blankSymbol.at(0))
+      if (blankSymbol.size() && ch == blankSymbol.at(0))
         continue;
 
       if (opt::verbose) {
@@ -797,7 +796,7 @@ public:
           erase_blank_until(wis, '=');
           erase_blank(wis);
           unsigned n = 0;
-          while (std::isdigit(ch = wis.get()))
+          while (wis.good() && std::isdigit(ch = wis.get()))
             n = (ch - '0') + n * 10;
           if (nTapes != -1u) {
             report_error_here(
