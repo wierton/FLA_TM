@@ -556,6 +556,44 @@ private:
 public:
   TMParser() {}
 
+  bool validate_input(const std::string &input) {
+    /* ERROR
+     *
+     * Input: 100A1A001
+     * ==================== ERR ====================
+     * error: 'A' was not declared in the set of input
+     * symbols Input: 100A1A001
+     *  		 ^
+     * ==================== END ====================
+     *
+     * CORRECT
+     * Input: 1001001
+     * ==================== RUN ====================
+     * */
+    std::set<char> valid_chars;
+    for (auto &s : inputSymbolSet)
+      valid_chars.insert(s.at(0));
+
+    for (unsigned i = 0; i < input.size(); i++) {
+      char ch = input[i];
+      if (valid_chars.find(ch) != valid_chars.end())
+        continue;
+
+      /* clang-format off */
+      std::cerr << "Input: " << input << "\n";
+      std::cerr << "==================== ERR ====================\n";
+      std::cerr << "error: '" << ch
+                << "' was not declared in the set of input symbols\n";
+      std::cerr << "Input: " << input << "\n";
+      for (unsigned j = 0; j < 7 + i; j++) std::cerr << " ";
+      std::cerr << "^\n";
+      std::cerr << "==================== END ====================\n";
+      /* clang-format on */
+      return false;
+    }
+    return true;
+  }
+
   TuringMachine parseTMFile(std::istream &is) {
     wrapped_istream wis(is);
     // a naive parser
@@ -810,6 +848,14 @@ int main(int argc, const char *argv[]) {
   std::ifstream ifs(tmfile);
   TMParser parser;
   auto TM = parser.parseTMFile(ifs);
+  if (parser.validate_input(input)) {
+    /* clang-format off */
+    std::cerr << "Input: " << input << "\n";
+    std::cerr << "==================== RUN ====================\n";
+    /* clang-format on */
+  } else {
+    return 1;
+  }
   TM.set_input(input);
   TM.run();
   return 0;
