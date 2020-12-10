@@ -33,10 +33,10 @@ class Tape {
   char tape_at(int64_t i) const {
     /* emplace back blank */
     if (i >= 0) {
-      if (i >= (int64_t)p_tape.size()) return '_';
+      if (i >= (int64_t)p_tape.size()) return blank;
       return p_tape.at(i);
     } else {
-      if (-i - 1 >= (int64_t)n_tape.size()) return '_';
+      if (-i - 1 >= (int64_t)n_tape.size()) return blank;
       return n_tape.at(-i - 1);
     }
   }
@@ -65,14 +65,14 @@ public:
     int64_t l = begin();
     int64_t r = end();
     for (; l < r; l++)
-      if (tape_at(l) != '_') break;
+      if (tape_at(l) != blank) break;
     return l;
   }
   int64_t cend() const {
     int64_t l = begin();
     int64_t r = end();
     for (; l < r; r--)
-      if (tape_at(r - 1) != '_') break;
+      if (tape_at(r - 1) != blank) break;
     return r;
   }
 
@@ -688,6 +688,8 @@ public:
       char ch = input[i];
       if (valid_chars.find(ch) != valid_chars.end())
         continue;
+      if (ch == blankSymbol.at(0))
+        continue;
 
       if (opt::verbose) {
         /* clang-format off */
@@ -1019,6 +1021,7 @@ int main(int argc, const char *argv[]) {
   TM.dump();
 #endif
 
+#if 1
   std::string result = TM.run();
   if (opt::verbose) {
     /* clang-format off */
@@ -1028,5 +1031,6 @@ int main(int argc, const char *argv[]) {
   } else {
     std::cout << result << "\n";
   }
+#endif
   return 0;
 }
