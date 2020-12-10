@@ -22,7 +22,7 @@
 
 namespace opt {
 bool verbose = false;
-};
+}
 
 class Tape {
   std::vector<char> p_tape; // 0, 1, 2, ...
@@ -33,10 +33,10 @@ class Tape {
   char tape_at(int64_t i) const {
     /* emplace back blank */
     if (i >= 0) {
-      if (i >= p_tape.size()) return '_';
+      if (i >= (int64_t)p_tape.size()) return '_';
       return p_tape.at(i);
     } else {
-      if (-i - 1 >= n_tape.size()) return '_';
+      if (-i - 1 >= (int64_t)n_tape.size()) return '_';
       return n_tape.at(-i - 1);
     }
   }
@@ -44,10 +44,12 @@ class Tape {
   char &tape_at(int64_t i) {
     /* emplace back blank */
     if (i >= 0) {
-      while (p_tape.size() < i + 1) p_tape.push_back(blank);
+      while ((int64_t)p_tape.size() < i + 1)
+        p_tape.push_back(blank);
       return p_tape.at(i);
     } else {
-      while (n_tape.size() < -i) n_tape.push_back(blank);
+      while ((int64_t)n_tape.size() < -i)
+        n_tape.push_back(blank);
       return n_tape.at(-i - 1);
     }
   }
@@ -234,11 +236,12 @@ public:
       std::cout << "Tape" << i << "  :";
       for (int64_t j = cbegin; j < cend; j++) {
         unsigned n = 1;
-        if (j != cbegin)
+        if (j != cbegin) {
           if (j < 1)
             n = std::to_string(j - 1).size() - 1;
           else
             n = std::to_string(j - 1).size();
+        }
         for (unsigned i = 0; i < n; i++) std::cout << " ";
         std::cout << tapes[i].get(j);
       }
@@ -564,7 +567,6 @@ private:
       wrapped_istream &wis,
       StringToken (TMParser::*extractor)(
           wrapped_istream &)) {
-    pdbg("[parseStringArray] erase blank\n");
     erase_blank(wis);
     pdbg("[parseStringArray] after erase blank, '%s'\n",
         wis.peek());
@@ -580,8 +582,8 @@ private:
           "[%s:%s:%s]\n",
           std::string(s), wis.peek(), s.lineno, s.column,
           s.size());
-      if (s.size() == 0) { continue; }
-      retSet.push_back(s);
+      if (s.size() > 0) retSet.push_back(s);
+
       erase_blank(wis);
       if (wis.endl()) break;
 
@@ -650,20 +652,15 @@ public:
     std::clog << "#N = " << nTapes << "\n";
 
     for (const DeltaEntry &e : delta) {
-      for (char ch : e.curState)
-        std::clog << ch;
+      for (char ch : e.curState) std::clog << ch;
       std::clog << " ";
-      for (char ch : e.curSymbols)
-        std::clog << ch;
+      for (char ch : e.curSymbols) std::clog << ch;
       std::clog << " ";
-      for (char ch : e.nxtSymbols)
-        std::clog << ch;
+      for (char ch : e.nxtSymbols) std::clog << ch;
       std::clog << " ";
-      for (char ch : e.actions)
-        std::clog << ch;
+      for (char ch : e.actions) std::clog << ch;
       std::clog << " ";
-      for (char ch : e.nxtState)
-        std::clog << ch;
+      for (char ch : e.nxtState) std::clog << ch;
       std::clog << " ";
       std::clog << "\n";
     }
@@ -716,7 +713,6 @@ public:
     // a naive parser
     unsigned preseted_nTapes = -1;
     while (wis.good()) {
-      pdbg("[mainloop] of parser's main while loop\n");
       erase_blank(wis);
       pdbg("[mainloop] erase initial blank, '%s'\n",
           wis.peek());
@@ -727,7 +723,6 @@ public:
         wis.get();
       } else if (wis.peek() == '#') {
         wis.ignore();
-        pdbg("[mainloop.#] erase blank\n");
         erase_blank(wis);
         pdbg("[mainloop.#] after erase blank '%s'\n",
             wis.peek());
@@ -791,7 +786,8 @@ public:
           erase_blank(wis);
           blankSymbol = parseState(wis);
           if (blankSymbol.size() != 1)
-            report_error(blankSymbol, "blank symbol size <> 1\n", wis);
+            report_error(blankSymbol,
+                "blank symbol size <> 1\n", wis);
           if (blankSymbol.empty())
             blankSymbol.push_back('_');
           break;
@@ -859,7 +855,7 @@ public:
                     "we adjust #N to %s as minimum value",
                     preseted_nTapes, stp->size(), nTapes),
                 wis);
-          } else if (old != -1 && old != stp->size()) {
+          } else if (old != -1u && old != stp->size()) {
             report_error(*stp,
                 formatv(
                     "deduced #N=%s, size %s here is "
@@ -925,8 +921,7 @@ public:
           char ch = stp->at(i);
           if (valid_chars.find(ch) != valid_chars.end())
             continue;
-          if (ch == blankSymbol[0])
-            continue;
+          if (ch == blankSymbol[0]) continue;
 
           StringToken tok(" ");
           tok.lineno = stp->lineno;
@@ -1023,6 +1018,7 @@ int main(int argc, const char *argv[]) {
 #ifdef DEBUG
   TM.dump();
 #endif
+
   std::string result = TM.run();
   if (opt::verbose) {
     /* clang-format off */
