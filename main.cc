@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#define DEBUG
+// #define DEBUG
 
 #ifdef DEBUG
 #  define pdbg(fmt, ...)                              \
@@ -409,6 +409,7 @@ public:
 };
 
 class TMParser {
+  bool found_error = false;
   std::map<std::string, unsigned> stateIdMap;
   struct StringToken : public std::string {
     unsigned lineno = 0;
@@ -443,7 +444,7 @@ class TMParser {
   };
   std::vector<DeltaEntry> delta;
 
-  static void report_error_here(
+  void report_error_here(
       const std::string &msg, wrapped_istream &wis) {
     StringToken s(" ");
     s.lineno = wis.get_lineno();
@@ -451,8 +452,9 @@ class TMParser {
     report_error(s, msg, wis);
   }
 
-  static void report_error(const StringToken &tok,
+  void report_error(const StringToken &tok,
       const std::string &msg, wrapped_istream &wis) {
+    found_error = true;
     if (!opt::verbose) {
       std::cerr << "syntax error\n";
       exit(1);
@@ -481,14 +483,13 @@ private:
     s.erase(s.find_last_not_of(" \t\v\f"), s.npos);
   }
 
-  static bool erase_blank(wrapped_istream &wis) {
+  bool erase_blank(wrapped_istream &wis) {
     while (std::isblank(wis.peek()) && wis.good())
       wis.ignore();
     return wis.good();
   }
 
-  static bool erase_blank_until(
-      wrapped_istream &wis, char ch) {
+  bool erase_blank_until(wrapped_istream &wis, char ch) {
     erase_blank(wis);
     if (wis.get() != ch) {
       report_error_here(
@@ -498,7 +499,7 @@ private:
     return wis.good();
   }
 
-  static StringToken parseStringToken(wrapped_istream &wis,
+  StringToken parseStringToken(wrapped_istream &wis,
       std::function<bool(char)> tester) {
     StringToken token;
     token.lineno = wis.get_lineno();
@@ -514,7 +515,7 @@ private:
     return token;
   }
 
-  static StringToken parseState(wrapped_istream &wis) {
+  StringToken parseState(wrapped_istream &wis) {
     StringToken state = parseStringToken(wis, [](char ch) {
       return std::isalnum(ch) || ch == '_';
     });
@@ -524,7 +525,7 @@ private:
     return state;
   }
 
-  static StringToken parseActions(wrapped_istream &wis) {
+  StringToken parseActions(wrapped_istream &wis) {
     StringToken symbol = parseStringToken(wis, [](char ch) {
       return ch == 'l' || ch == 'r' || ch == '*';
     });
@@ -534,8 +535,7 @@ private:
     return symbol;
   }
 
-  static StringToken parseInputSymbol(
-      wrapped_istream &wis) {
+  StringToken parseInputSymbol(wrapped_istream &wis) {
     StringToken symbol = parseStringToken(wis, [](char ch) {
       return std::isprint(ch) && ch != ' ' && ch != ',' &&
              ch != ';' && ch != '{' && ch != '}' &&
@@ -547,7 +547,7 @@ private:
     return symbol;
   }
 
-  static StringToken parseTapeSymbol(wrapped_istream &wis) {
+  StringToken parseTapeSymbol(wrapped_istream &wis) {
     StringToken symbol = parseStringToken(wis, [](char ch) {
       return std::isprint(ch) && ch != ' ' && ch != ',' &&
              ch != ';' && ch != '{' && ch != '}' &&
@@ -559,10 +559,10 @@ private:
     return symbol;
   }
 
-  static std::vector<StringToken> parseStringArray(
+  std::vector<StringToken> parseStringArray(
       wrapped_istream &wis,
-      std::function<StringToken(wrapped_istream &)>
-          extractor) {
+      StringToken (TMParser::*extractor)(
+          wrapped_istream &)) {
     pdbg("[parseStringArray] erase blank\n");
     erase_blank(wis);
     pdbg("[parseStringArray] after erase blank, '%s'\n",
@@ -573,7 +573,7 @@ private:
 
     std::vector<StringToken> retSet;
     while (!wis.endl()) {
-      StringToken s = extractor(wis);
+      StringToken s = (this->*extractor)(wis);
       pdbg(
           "[parseStringArray] extract '%s'-'%s' "
           "[%s:%s:%s]\n",
@@ -599,19 +599,21 @@ private:
     return retSet;
   }
 
-  static std::vector<StringToken> parseStateArray(
+  std::vector<StringToken> parseStateArray(
       wrapped_istream &wis) {
-    return parseStringArray(wis, &parseState);
+    return parseStringArray(wis, &TMParser::parseState);
   }
 
-  static std::vector<StringToken> parseInputSymbolArray(
+  std::vector<StringToken> parseInputSymbolArray(
       wrapped_istream &wis) {
-    return parseStringArray(wis, &parseInputSymbol);
+    return parseStringArray(
+        wis, &TMParser::parseInputSymbol);
   }
 
-  static std::vector<StringToken> parseTapeSymbolArray(
+  std::vector<StringToken> parseTapeSymbolArray(
       wrapped_istream &wis) {
-    return parseStringArray(wis, &parseTapeSymbol);
+    return parseStringArray(
+        wis, &TMParser::parseTapeSymbol);
   }
 
 public:
@@ -739,10 +741,9 @@ public:
           erase_blank(wis);
           blankSymbol = parseState(wis);
           break;
-        case 'N':
+        case 'N': {
           erase_blank_until(wis, '=');
           erase_blank(wis);
-          char ch;
           unsigned n = 0;
           while (std::isdigit(ch = wis.get()))
             n = (ch - '0') + n * 10;
@@ -755,7 +756,13 @@ public:
           }
           nTapes = n;
           preseted_nTapes = n;
-          break;
+        } break;
+        default: {
+          StringToken tok(" ");
+          tok.lineno = wis.get_lineno();
+          tok.column = wis.get_column() - 1;
+          report_error(tok, formatv("unexpected #%s", ch), wis);
+        } break;
         }
 
         while (!wis.endl()) wis.ignore();
@@ -791,17 +798,17 @@ public:
           nTapes = std::min<unsigned>(stp->size(), nTapes);
           if (preseted_nTapes != -1u &&
               preseted_nTapes != stp->size()) {
-            report_error(e.curSymbols,
+            report_error(*stp,
                 formatv(
-                    "#N: %s, size %s here is inconsistent, "
+                    "#N=%s, size %s here is inconsistent, "
                     "we adjust #N to %s as minimum value",
                     preseted_nTapes, stp->size(), nTapes),
                 wis);
-          } else if (nTapes != -1 &&
-                     nTapes != stp->size()) {
-            report_error(e.curSymbols,
+          } else if (old != -1 &&
+                     old != stp->size()) {
+            report_error(*stp,
                 formatv(
-                    "deduced #N: %s, size %s here is "
+                    "deduced #N=%s, size %s here is "
                     "inconsistent, "
                     "we adjust #N to %s as minimum value",
                     old, stp->size(), nTapes),
@@ -846,6 +853,8 @@ public:
       std::cerr << "invalid #N " << nTapes << "\n";
       nTapes = 0u;
     }
+
+    if (found_error) exit(1);
 
     /* construct TuringMachine */
     TuringMachine TM(nTapes, blankSymbol[0]);

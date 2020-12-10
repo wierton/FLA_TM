@@ -20,7 +20,7 @@
 #F = {halt_accept}
 
 ; the number of tapes
-#N = 2
+#.N = 2
 
 ; the transition functions
 
@@ -61,7 +61,7 @@ reject 01 __ rl reject
 reject 10 __ rl reject
 reject 11 __ rl reject
 reject __ f_ r* reject2
-reject2 __ a_ r* reject3
+reject2 _ a_ r* reject3
 reject3 __ l_ r* reject4
 reject4 __ s_ r* reject5
 reject5 __ e_ ** halt_reject
