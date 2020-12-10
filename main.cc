@@ -527,7 +527,8 @@ private:
 
   StringToken parseActions(wrapped_istream &wis) {
     StringToken symbol = parseStringToken(wis, [](char ch) {
-      return ch == 'l' || ch == 'r' || ch == '*';
+      return std::isprint(ch) && ch != ' ' && ch != ',' &&
+             ch != ';' && ch != '{' && ch != '}';
     });
 
     if (symbol.size() == 0)
@@ -618,6 +619,55 @@ private:
 
 public:
   TMParser() {}
+
+  void dump() {
+    std::clog << "#Q = {";
+    for (const StringToken &s : states)
+      std::clog << std::string(s) << ", ";
+    std::clog << "}\n";
+
+    std::clog << "#S = {";
+    for (const StringToken &s : inputSymbolSet)
+      std::clog << std::string(s) << ", ";
+    std::clog << "}\n";
+
+    std::clog << "#G = {";
+    for (const StringToken &s : tapeSymbolSet)
+      std::clog << std::string(s) << ", ";
+    std::clog << "}\n";
+
+    std::clog << "#q0 = ";
+    std::clog << std::string(initState) << "\n";
+
+    std::clog << "#B = ";
+    std::clog << std::string(blankSymbol) << "\n";
+
+    std::clog << "#F = {";
+    for (const StringToken &s : finalStates)
+      std::clog << std::string(s) << ", ";
+    std::clog << "}\n";
+
+    std::clog << "#N = " << nTapes << "\n";
+
+    for (const DeltaEntry &e : delta) {
+      for (char ch : e.curState)
+        std::clog << ch;
+      std::clog << " ";
+      for (char ch : e.curSymbols)
+        std::clog << ch;
+      std::clog << " ";
+      for (char ch : e.nxtSymbols)
+        std::clog << ch;
+      std::clog << " ";
+      for (char ch : e.actions)
+        std::clog << ch;
+      std::clog << " ";
+      for (char ch : e.nxtState)
+        std::clog << ch;
+      std::clog << " ";
+      std::clog << "\n";
+    }
+  }
 
   bool validate_input(const std::string &input) {
     /* ERROR
@@ -740,6 +790,10 @@ public:
           erase_blank_until(wis, '=');
           erase_blank(wis);
           blankSymbol = parseState(wis);
+          if (blankSymbol.size() != 1)
+            report_error(blankSymbol, "blank symbol size <> 1\n", wis);
+          if (blankSymbol.empty())
+            blankSymbol.push_back('_');
           break;
         case 'N': {
           erase_blank_until(wis, '=');
@@ -761,7 +815,8 @@ public:
           StringToken tok(" ");
           tok.lineno = wis.get_lineno();
           tok.column = wis.get_column() - 1;
-          report_error(tok, formatv("unexpected #%s", ch), wis);
+          report_error(
+              tok, formatv("unexpected #%s", ch), wis);
         } break;
         }
 
@@ -804,8 +859,7 @@ public:
                     "we adjust #N to %s as minimum value",
                     preseted_nTapes, stp->size(), nTapes),
                 wis);
-          } else if (old != -1 &&
-                     old != stp->size()) {
+          } else if (old != -1 && old != stp->size()) {
             report_error(*stp,
                 formatv(
                     "deduced #N=%s, size %s here is "
@@ -820,8 +874,8 @@ public:
           char a = e.actions[i];
           if (a != 'l' && a != 'r' && a != '*') {
             StringToken tok(" ");
-            tok.lineno = wis.get_lineno();
-            tok.column = wis.get_column() + i;
+            tok.lineno = e.actions.lineno;
+            tok.column = e.actions.column + i;
             report_error(tok, "expected l, r, * here", wis);
           }
         }
@@ -836,6 +890,11 @@ public:
             wis);
     }
     for (const DeltaEntry &e : delta) {
+      if (stateIdMap.find(e.curState) == stateIdMap.end())
+        report_error(e.curState,
+            formatv("cannot find state '%s' in actions",
+                std::string(e.curState)),
+            wis);
       if (stateIdMap.find(e.nxtState) == stateIdMap.end())
         report_error(e.nxtState,
             formatv("cannot find state '%s' in actions",
@@ -853,6 +912,35 @@ public:
       std::cerr << "invalid #N " << nTapes << "\n";
       nTapes = 0u;
     }
+
+    /* check symbols */
+    std::set<char> valid_chars;
+    for (auto &s : tapeSymbolSet)
+      valid_chars.insert(s.at(0));
+    for (const DeltaEntry &e : delta) {
+      const std::vector<const StringToken *> sv = {
+          &e.curSymbols, &e.nxtSymbols};
+      for (const StringToken *stp : sv) {
+        for (unsigned i = 0; i < stp->size(); i++) {
+          char ch = stp->at(i);
+          if (valid_chars.find(ch) != valid_chars.end())
+            continue;
+          if (ch == blankSymbol[0])
+            continue;
+
+          StringToken tok(" ");
+          tok.lineno = stp->lineno;
+          tok.column = stp->column + i;
+          report_error(tok,
+              formatv("symbol %s not found in #G", ch),
+              wis);
+        }
+      }
+    }
+
+#ifdef DEBUG
+    this->dump();
+#endif
 
     if (found_error) exit(1);
 
