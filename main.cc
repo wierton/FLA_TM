@@ -10,6 +10,16 @@
 #include <utility>
 #include <vector>
 
+// #define DEBUG
+
+#ifdef DEBUG
+#  define pdbg(fmt, ...)                              \
+    std::cerr << formatv("%s: [%s:%s]" fmt, __LINE__, \
+        wis.get_lineno(), wis.get_column(), ##__VA_ARGS__)
+#else
+#  define pdbg(fmt, ...)
+#endif
+
 namespace opt {
 bool verbose = false;
 };
@@ -45,8 +55,27 @@ class Tape {
 public:
   Tape(char blank) : blank(blank) {}
 
+  int64_t begin() const {
+    return n_tape.size() ? (-n_tape.size()) : 0;
+  }
+  int64_t end() const { return p_tape.size(); }
+  int64_t cbegin() const {
+    int64_t l = begin();
+    int64_t r = end();
+    for (; l < r; l++)
+      if (tape_at(l) != '_') break;
+    return l;
+  }
+  int64_t cend() const {
+    int64_t l = begin();
+    int64_t r = end();
+    for (; l < r; r--)
+      if (tape_at(r - 1) != '_') break;
+    return r;
+  }
+
   size_t size() const { return p_tape.size(); }
-  char get(unsigned i) { return tape_at(i); }
+  char get(int64_t i) const { return tape_at(i); }
   char get() { return tape_at(index); }
   int64_t get_index() const { return index; }
   void set(const std::string &s) {
@@ -64,16 +93,7 @@ public:
 
   std::string get_contents() const {
     std::string ret;
-
-    int64_t l = -n_tape.size();
-    int64_t r = p_tape.size() - 1;
-    for (; l <= r; l++)
-      if (tape_at(l) != '_') break;
-
-    for (; l <= r; r--)
-      if (tape_at(r) != '_') break;
-
-    for (int64_t i = l; i <= r; i++)
+    for (int64_t i = cbegin(); i < cend(); i++)
       ret.push_back(tape_at(i));
     return ret;
   }
@@ -137,26 +157,37 @@ public:
     auto symbols = getCurSymbols();
 
     auto it = m.find(symbols);
-    assert(it != m.end());
+    if (it == m.end()) {
+      /* cannot proceed */
+      std::cerr << "cannot proceed since no guidelines "
+                   "about current tape symbols\n";
+      printOneStep();
+      exit(1);
+    }
 
     auto &info = it->second;
     auto &step = info.nxtStep;
 
     /* set new state */
+#ifdef DEBUG
     assert(step.size() == tapes.size());
+#endif
     for (unsigned i = 0; i < step.size(); i++)
-      tapes[i].setAndMove(step[i].first, step[i].second);
+      if (i < tapes.size())
+        tapes[i].setAndMove(step[i].first, step[i].second);
     state = info.nxtState;
   }
 
-  void run() {
+  std::string run() {
     while (!isTerminated()) {
       if (opt::verbose) printOneStep();
       runOneStep();
       nr_steps++;
     }
     if (opt::verbose) printOneStep();
-    std::cout << tapes.at(0).get_contents() << "\n";
+
+    if (tapes.empty()) return "";
+    return tapes.at(0).get_contents();
   }
 
   void printOneStep() {
@@ -173,28 +204,48 @@ public:
     std::cout << "Step   : " << nr_steps << "\n";
 
     for (unsigned i = 0; i < tapes.size(); i++) {
-      unsigned tape_i_size = std::max<unsigned>(
-          tapes[i].size(), tapes[i].get_index() + 1);
+      int64_t cbegin = tapes[i].cbegin();
+      int64_t cend = tapes[i].cend();
+      int64_t index = tapes[i].get_index();
+      if (cbegin >= cend) {
+        cbegin = index;
+        cend = index + 1;
+      } else if (index >= cend) {
+        cend = index + 1;
+      } else if (index < cbegin) {
+        cbegin = index;
+      }
+
       std::cout << "Index" << i << " :";
-      for (unsigned j = 0; j < tape_i_size; j++)
+      for (int64_t j = cbegin; j < cend; j++)
         std::cout << " " << j;
       std::cout << "\n";
 
       std::cout << "Tape" << i << "  :";
-      for (unsigned j = 0; j < tape_i_size; j++)
-        std::cout << " " << tapes[i].get(j);
+      for (int64_t j = cbegin; j < cend; j++) {
+        unsigned n = 1;
+        if (j != cbegin)
+          n = std::to_string(j - 1).size();
+        for (unsigned i = 0; i < n; i ++)
+          std::cout << " ";
+        std::cout << tapes[i].get(j);
+      }
       std::cout << "\n";
 
       std::cout << "Head" << i << "  :";
-      for (unsigned j = 0; j < tapes[i].get_index(); j++)
-        std::cout << "  ";
+      for (int64_t j = cbegin; j < index; j++) {
+        unsigned n = std::to_string(j).size();
+        for (unsigned k = 0; k < n + 1; k ++)
+          std::cout << " ";
+      }
       std::cout << " ^\n";
     }
 
     std::cout << "State  : " << stateStrings.at(state)
               << "\n";
-    std::cout << "-----------------------------------------"
-                 "----\n";
+    /* clang-format off */
+    std::cout << "---------------------------------------------\n";
+    /* clang-format on */
   }
 
   void dump() {
@@ -262,10 +313,6 @@ std::string formatv(const char *fmt, Args &&... args) {
   }
   return ret;
 }
-
-#define pdbg(fmt, ...)                              \
-  std::cerr << formatv("%s: [%s:%s]" fmt, __LINE__, \
-      wis.get_lineno(), wis.get_column(), ##__VA_ARGS__)
 
 #if 0
 template <class T>
@@ -579,16 +626,20 @@ public:
       if (valid_chars.find(ch) != valid_chars.end())
         continue;
 
-      /* clang-format off */
-      std::cerr << "Input: " << input << "\n";
-      std::cerr << "==================== ERR ====================\n";
-      std::cerr << "error: '" << ch
-                << "' was not declared in the set of input symbols\n";
-      std::cerr << "Input: " << input << "\n";
-      for (unsigned j = 0; j < 7 + i; j++) std::cerr << " ";
-      std::cerr << "^\n";
-      std::cerr << "==================== END ====================\n";
-      /* clang-format on */
+      if (opt::verbose) {
+        /* clang-format off */
+        std::cerr << "Input: " << input << "\n";
+        std::cerr << "==================== ERR ====================\n";
+        std::cerr << "error: '" << ch
+                  << "' was not declared in the set of input symbols\n";
+        std::cerr << "Input: " << input << "\n";
+        for (unsigned j = 0; j < 7 + i; j++) std::cerr << " ";
+        std::cerr << "^\n";
+        std::cerr << "==================== END ====================\n";
+        /* clang-format on */
+      } else {
+        std::cerr << "illegal input\n";
+      }
       return false;
     }
     return true;
@@ -848,15 +899,26 @@ int main(int argc, const char *argv[]) {
   std::ifstream ifs(tmfile);
   TMParser parser;
   auto TM = parser.parseTMFile(ifs);
-  if (parser.validate_input(input)) {
-    /* clang-format off */
-    std::cerr << "Input: " << input << "\n";
-    std::cerr << "==================== RUN ====================\n";
-    /* clang-format on */
-  } else {
+  if (!parser.validate_input(input)) {
     return 1;
   }
+
+  if (opt::verbose) {
+    /* clang-format off */
+    std::cout << "Input: " << input << "\n";
+    std::cout << "==================== RUN ====================\n";
+    /* clang-format on */
+  }
+
   TM.set_input(input);
-  TM.run();
+  std::string result = TM.run();
+  if (opt::verbose) {
+    /* clang-format off */
+    std::cout << "Result: " << result << "\n";
+    std::cout << "==================== END ====================\n";
+    /* clang-format on */
+  } else {
+    std::cout << result << "\n";
+  }
   return 0;
 }
