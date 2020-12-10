@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstring>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -9,21 +10,72 @@
 #include <utility>
 #include <vector>
 
+namespace opt {
+bool verbose = false;
+};
+
 class Tape {
-  std::vector<char> tape;
-  unsigned index;
+  std::vector<char> p_tape; // 0, 1, 2, ...
+  std::vector<char> n_tape; // -1, -2, ...
+  char blank = '_';
+  int64_t index = 0;
+
+  char tape_at(int64_t i) const {
+    /* emplace back blank */
+    if (i >= 0) {
+      if (i >= p_tape.size()) return '_';
+      return p_tape.at(i);
+    } else {
+      if (-i - 1 >= n_tape.size()) return '_';
+      return n_tape.at(-i - 1);
+    }
+  }
+
+  char &tape_at(int64_t i) {
+    /* emplace back blank */
+    if (i >= 0) {
+      while (p_tape.size() < i + 1) p_tape.push_back(blank);
+      return p_tape.at(i);
+    } else {
+      while (n_tape.size() < -i) n_tape.push_back(blank);
+      return n_tape.at(-i - 1);
+    }
+  }
 
 public:
-  Tape(unsigned index = 0) : index(index) {}
+  Tape(char blank) : blank(blank) {}
 
-  char get() { return tape.at(index); }
+  size_t size() const { return p_tape.size(); }
+  char get(unsigned i) { return tape_at(i); }
+  char get() { return tape_at(index); }
+  int64_t get_index() const { return index; }
+  void set(const std::string &s) {
+    p_tape.clear();
+    for (char ch : s) p_tape.push_back(ch);
+  }
 
   void setAndMove(char ch, char dir) {
-    tape.at(index) = ch;
+    tape_at(index) = ch;
     if (dir == 'l')
       index--;
     else if (dir == 'r')
       index++;
+  }
+
+  std::string get_contents() const {
+    std::string ret;
+
+    int64_t l = -n_tape.size();
+    int64_t r = p_tape.size() - 1;
+    for (; l <= r; l++)
+      if (tape_at(l) != '_') break;
+
+    for (; l <= r; r--)
+      if (tape_at(r) != '_') break;
+
+    for (int64_t i = l; i <= r; i++)
+      ret.push_back(tape_at(i));
+    return ret;
   }
 };
 
@@ -41,8 +93,9 @@ class TuringMachine {
   std::vector<std::string> stateStrings;
 
   unsigned state = 0u;
-  char blank = 0u;
+  char blank = '_';
   std::set<unsigned> finalStates;
+  unsigned nr_steps = 0u;
 
   struct TransitionInfo {
     //                  nxtSym, action
@@ -57,7 +110,16 @@ class TuringMachine {
   friend class TMParser;
 
 public:
-  TuringMachine(unsigned nTapes) : tapes(nTapes) {}
+  TuringMachine(unsigned nTapes, char blank) {
+    this->blank = blank;
+    for (unsigned i = 0; i < nTapes; i++)
+      tapes.emplace_back(blank);
+  }
+
+  void set_input(const std::string &s) {
+    for (unsigned i = 0; i < s.size(); i++) { ; }
+    tapes.at(0).set(s);
+  }
 
   std::vector<char> getCurSymbols() {
     std::vector<char> ret;
@@ -88,10 +150,52 @@ public:
   }
 
   void run() {
-    while (!isTerminated()) runOneStep();
+    while (!isTerminated()) {
+      if (opt::verbose) printOneStep();
+      runOneStep();
+      nr_steps++;
+    }
+    if (opt::verbose) printOneStep();
+    std::cout << tapes.at(0).get_contents() << "\n";
   }
 
-  void printOneStep() {}
+  void printOneStep() {
+    /* Step   : 0
+     * Index0 : 0 1 2 3 4 5 6
+     * Tape0  : 1 0 0 1 0 0 1
+     * Head0  : ^
+     * Index1 : 0
+     * Tape1  : _
+     * Head1  : ^
+     * State  : 0
+     * ---------------------------------------------
+     **/
+    std::cout << "Step   : " << nr_steps << "\n";
+
+    for (unsigned i = 0; i < tapes.size(); i++) {
+      unsigned tape_i_size = std::max<unsigned>(
+          tapes[i].size(), tapes[i].get_index() + 1);
+      std::cout << "Index" << i << " :";
+      for (unsigned j = 0; j < tape_i_size; j++)
+        std::cout << " " << j;
+      std::cout << "\n";
+
+      std::cout << "Tape" << i << "  :";
+      for (unsigned j = 0; j < tape_i_size; j++)
+        std::cout << " " << tapes[i].get(j);
+      std::cout << "\n";
+
+      std::cout << "Head" << i << "  :";
+      for (unsigned j = 0; j < tapes[i].get_index(); j++)
+        std::cout << "  ";
+      std::cout << " ^\n";
+    }
+
+    std::cout << "State  : " << stateStrings.at(state)
+              << "\n";
+    std::cout << "-----------------------------------------"
+                 "----\n";
+  }
 
   void dump() {
     std::clog << "#Q = {";
@@ -288,6 +392,11 @@ class TMParser {
 
   static void report_error(const StringToken &tok,
       const std::string &msg, wrapped_istream &wis) {
+    if (!opt::verbose) {
+      std::cerr << "syntax error\n";
+      exit(1);
+    }
+
     std::cerr << "error at line " << (wis.get_lineno() + 1)
               << " column " << (wis.get_column() + 1)
               << ": " << msg << "\n";
@@ -636,7 +745,7 @@ public:
     }
 
     /* construct TuringMachine */
-    TuringMachine TM(nTapes);
+    TuringMachine TM(nTapes, blankSymbol[0]);
     TM.state = stateIdMap[initState];
     for (const StringToken &s : finalStates) {
       TM.finalStates.insert(stateIdMap[s]);
@@ -645,7 +754,6 @@ public:
     for (const StringToken &s : states)
       TM.stateStrings.emplace_back(s);
 
-    TM.blank = blankSymbol[0];
     for (const DeltaEntry &e : delta) {
       unsigned cur_state = stateIdMap[e.curState];
       TM.delta.resize(std::max<unsigned>(
@@ -666,9 +774,43 @@ public:
 };
 
 int main(int argc, const char *argv[]) {
-  std::ifstream ifs(argv[1]);
+  const char *help =
+      "usage: turing [-v|--verbose] [-h|--help] <tm> "
+      "<input>";
+  if (argc <= 1) {
+    std::cout << help << "\n";
+    return 1;
+  }
+
+  const char *tmfile = nullptr;
+  const char *input = nullptr;
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "-h") == 0 ||
+        strcmp(argv[i], "--help") == 0) {
+      std::cout << help << "\n";
+      return 0;
+    } else if (strcmp(argv[i], "-v") == 0 ||
+               strcmp(argv[i], "--verbose") == 0) {
+      opt::verbose = 1;
+    } else if (!tmfile) {
+      tmfile = argv[i];
+    } else if (!input) {
+      input = argv[i];
+    } else {
+      std::cerr << "invalid argument '" << argv[i] << "'\n";
+      return 0;
+    }
+  }
+
+  if (!tmfile || !input) {
+    std::cout << help << "\n";
+    return 1;
+  }
+
+  std::ifstream ifs(tmfile);
   TMParser parser;
   auto TM = parser.parseTMFile(ifs);
-  TM.dump();
+  TM.set_input(input);
+  TM.run();
   return 0;
 }

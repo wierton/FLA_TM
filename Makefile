@@ -14,7 +14,7 @@ $(APP): $(OFILES)
 	g++ $^ -o $@
 
 run: $(APP)
-	./$< test/*
+	./$< test/* 1001001
 
 -include $(OFILES:.o=.d)
 
