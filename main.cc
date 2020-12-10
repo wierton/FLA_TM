@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-// #define DEBUG
+#define DEBUG
 
 #ifdef DEBUG
 #  define pdbg(fmt, ...)                              \
@@ -152,16 +152,21 @@ public:
   }
 
   void runOneStep() {
-    assert(state < delta.size());
+    if (state >= delta.size()) {
+      /* cannot proceed */
+      std::cerr << "error: cannot proceed since no guidelines "
+                   "about current state\n";
+      exit(1);
+    }
+
     auto &m = delta[state];
     auto symbols = getCurSymbols();
 
     auto it = m.find(symbols);
     if (it == m.end()) {
       /* cannot proceed */
-      std::cerr << "cannot proceed since no guidelines "
+      std::cerr << "error: cannot proceed since no guidelines "
                    "about current tape symbols\n";
-      printOneStep();
       exit(1);
     }
 
@@ -911,6 +916,9 @@ int main(int argc, const char *argv[]) {
   }
 
   TM.set_input(input);
+#ifdef DEBUG
+  TM.dump();
+#endif
   std::string result = TM.run();
   if (opt::verbose) {
     /* clang-format off */
