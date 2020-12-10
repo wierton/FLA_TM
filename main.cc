@@ -116,6 +116,7 @@ class TuringMachine {
   char blank = '_';
   std::set<unsigned> finalStates;
   unsigned nr_steps = 0u;
+  bool finished = false;
 
   struct TransitionInfo {
     //                  nxtSym, action
@@ -148,15 +149,16 @@ public:
   }
 
   bool isTerminated() const {
-    return finalStates.find(state) != finalStates.end();
+    return finished ||
+           finalStates.find(state) != finalStates.end();
   }
 
   void runOneStep() {
     if (state >= delta.size()) {
-      /* cannot proceed */
-      std::cerr << "error: cannot proceed since no guidelines "
-                   "about current state\n";
-      exit(1);
+      // cannot proceed since no guidelines about current
+      // state
+      finished = true;
+      return;
     }
 
     auto &m = delta[state];
@@ -164,10 +166,10 @@ public:
 
     auto it = m.find(symbols);
     if (it == m.end()) {
-      /* cannot proceed */
-      std::cerr << "error: cannot proceed since no guidelines "
-                   "about current tape symbols\n";
-      exit(1);
+      // cannot proceed since no guidelines about current
+      // tape symbols
+      finished = true;
+      return;
     }
 
     auto &info = it->second;
@@ -229,10 +231,8 @@ public:
       std::cout << "Tape" << i << "  :";
       for (int64_t j = cbegin; j < cend; j++) {
         unsigned n = 1;
-        if (j != cbegin)
-          n = std::to_string(j - 1).size();
-        for (unsigned i = 0; i < n; i ++)
-          std::cout << " ";
+        if (j != cbegin) n = std::to_string(j - 1).size();
+        for (unsigned i = 0; i < n; i++) std::cout << " ";
         std::cout << tapes[i].get(j);
       }
       std::cout << "\n";
@@ -240,7 +240,7 @@ public:
       std::cout << "Head" << i << "  :";
       for (int64_t j = cbegin; j < index; j++) {
         unsigned n = std::to_string(j).size();
-        for (unsigned k = 0; k < n + 1; k ++)
+        for (unsigned k = 0; k < n + 1; k++)
           std::cout << " ";
       }
       std::cout << " ^\n";
@@ -904,9 +904,7 @@ int main(int argc, const char *argv[]) {
   std::ifstream ifs(tmfile);
   TMParser parser;
   auto TM = parser.parseTMFile(ifs);
-  if (!parser.validate_input(input)) {
-    return 1;
-  }
+  if (!parser.validate_input(input)) { return 1; }
 
   if (opt::verbose) {
     /* clang-format off */
