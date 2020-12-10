@@ -22,7 +22,7 @@ public:
     tape.at(index) = ch;
     if (dir == 'l')
       index--;
-    else
+    else if (dir == 'r')
       index++;
   }
 };
@@ -92,6 +92,45 @@ public:
   }
 
   void printOneStep() {}
+
+  void dump() {
+    std::clog << "#Q = {";
+    for (const std::string &s : stateStrings)
+      std::clog << s << ", ";
+    std::clog << "}\n";
+
+    std::clog << "#q0 = " << stateStrings.at(state) << "\n";
+    std::clog << "#B = " << blank << "\n";
+
+    std::clog << "#F = {";
+    for (unsigned s : finalStates)
+      std::clog << stateStrings.at(s) << ", ";
+    std::clog << "}\n";
+
+    std::clog << "#N = " << tapes.size() << "\n";
+
+    for (unsigned i = 0; i < delta.size(); i++) {
+      auto &m = delta[i];
+      for (auto &kvpair : m) {
+        const std::vector<char> &symvec = kvpair.first;
+        TransitionInfo &info = kvpair.second;
+
+        std::clog << stateStrings[i] << " ";
+        for (char ch : symvec) std::clog << ch;
+        std::clog << " ";
+
+        for (std::pair<char, char> chs : info.nxtStep)
+          std::clog << chs.first;
+        std::clog << " ";
+
+        for (std::pair<char, char> chs : info.nxtStep)
+          std::clog << chs.second;
+        std::clog << " ";
+
+        std::clog << stateStrings[info.nxtState] << "\n";
+      }
+    }
+  }
 };
 
 template <class... Args>
@@ -260,7 +299,8 @@ class TMParser {
     std::cerr << '\n';
     for (unsigned i = 0; i < tok.column; i++)
       std::cerr << " ";
-    for (unsigned i = 0; i < tok.size(); i++)
+    for (unsigned i = 0;
+         i < std::max<unsigned>(tok.size(), 1u); i++)
       std::cerr << "^";
     std::cerr << '\n';
   }
@@ -512,22 +552,31 @@ public:
         pdbg("[mainloop.action], next '%s'\n", wis.peek());
         DeltaEntry e;
         e.curState = parseState(wis);
+        pdbg("[mainloop.action.State] '%s'\n",
+            std::string(e.curState));
         erase_blank(wis);
         e.curSymbols = parseTapeSymbol(wis);
+        pdbg("[mainloop.action.CurSym] '%s'\n",
+            std::string(e.curSymbols));
         erase_blank(wis);
         e.nxtSymbols = parseTapeSymbol(wis);
+        pdbg("[mainloop.action.NxtSym] '%s'\n",
+            std::string(e.nxtSymbols));
         erase_blank(wis);
         e.actions = parseActions(wis);
+        pdbg("[mainloop.action.Actions] '%s'\n",
+            std::string(e.actions));
         erase_blank(wis);
         e.nxtState = parseState(wis);
         while (!wis.endl()) wis.ignore();
         wis.ignore();
+        delta.push_back(e);
 
         const std::vector<const StringToken *> sv = {
             &e.curSymbols, &e.nxtSymbols, &e.actions};
         for (const StringToken *stp : sv) {
           unsigned old = nTapes;
-          nTapes = std::min((unsigned)stp->size(), nTapes);
+          nTapes = std::min<unsigned>(stp->size(), nTapes);
           if (preseted_nTapes != -1u &&
               preseted_nTapes != stp->size()) {
             report_error(e.curSymbols,
@@ -591,23 +640,26 @@ public:
     TM.state = stateIdMap[initState];
     for (const StringToken &s : finalStates) {
       TM.finalStates.insert(stateIdMap[s]);
-      TM.blank = blankSymbol[0];
-      for (const DeltaEntry &e : delta) {
-        unsigned cur_state = stateIdMap[e.curState];
-        TM.delta.resize(std::max(
-            (unsigned)TM.delta.size(), cur_state + 1));
-        std::vector<char> cur_symvec(e.curSymbols.begin(),
-            e.curSymbols.begin() + nTapes);
-        std::vector<std::pair<char, char>>
-            nxtSym_action_vec;
-        for (unsigned i = 0; i < nTapes; i++)
-          nxtSym_action_vec.emplace_back(
-              e.nxtSymbols[i], e.actions[i]);
+    }
 
-        auto &info = TM.delta[cur_state][cur_symvec];
-        info.nxtStep = std::move(nxtSym_action_vec);
-        info.nxtState = stateIdMap[e.nxtState];
-      }
+    for (const StringToken &s : states)
+      TM.stateStrings.emplace_back(s);
+
+    TM.blank = blankSymbol[0];
+    for (const DeltaEntry &e : delta) {
+      unsigned cur_state = stateIdMap[e.curState];
+      TM.delta.resize(std::max<unsigned>(
+          TM.delta.size(), cur_state + 1));
+      std::vector<char> cur_symvec(e.curSymbols.begin(),
+          e.curSymbols.begin() + nTapes);
+      std::vector<std::pair<char, char>> nxtSym_action_vec;
+      for (unsigned i = 0; i < nTapes; i++)
+        nxtSym_action_vec.emplace_back(
+            e.nxtSymbols[i], e.actions[i]);
+
+      auto &info = TM.delta[cur_state][cur_symvec];
+      info.nxtStep = std::move(nxtSym_action_vec);
+      info.nxtState = stateIdMap[e.nxtState];
     }
     return TM;
   }
@@ -617,6 +669,6 @@ int main(int argc, const char *argv[]) {
   std::ifstream ifs(argv[1]);
   TMParser parser;
   auto TM = parser.parseTMFile(ifs);
-  TM.run();
+  TM.dump();
   return 0;
 }

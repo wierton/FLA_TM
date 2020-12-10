@@ -13,6 +13,9 @@ all: $(APP)
 $(APP): $(OFILES)
 	g++ $^ -o $@
 
+run: $(APP)
+	./$< test/*
+
 -include $(OFILES:.o=.d)
 
 clean:
