@@ -225,13 +225,20 @@ public:
 
       std::cout << "Index" << i << " :";
       for (int64_t j = cbegin; j < cend; j++)
-        std::cout << " " << j;
+        if (j >= 0)
+          std::cout << " " << j;
+        else
+          std::cout << " " << -j;
       std::cout << "\n";
 
       std::cout << "Tape" << i << "  :";
       for (int64_t j = cbegin; j < cend; j++) {
         unsigned n = 1;
-        if (j != cbegin) n = std::to_string(j - 1).size();
+        if (j != cbegin)
+          if (j < 1)
+            n = std::to_string(j - 1).size() - 1;
+          else
+            n = std::to_string(j - 1).size();
         for (unsigned i = 0; i < n; i++) std::cout << " ";
         std::cout << tapes[i].get(j);
       }
@@ -239,7 +246,9 @@ public:
 
       std::cout << "Head" << i << "  :";
       for (int64_t j = cbegin; j < index; j++) {
-        unsigned n = std::to_string(j).size();
+        unsigned n = (j >= 0)
+                         ? std::to_string(j).size()
+                         : (std::to_string(j).size() - 1);
         for (unsigned k = 0; k < n + 1; k++)
           std::cout << " ";
       }
