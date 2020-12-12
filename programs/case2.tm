@@ -2,7 +2,7 @@
 ; Input: a string of 0's and 1's, e.g. '11x111=11111'
 
 ; the finite set of states
-#Q={copy_a,copy_b,cmp_a,cmp_b,accept,accept2,accept3,accept4,halt_accept,reject_erase,reject,reject2,reject3,reject4,reject5,halt_reject}
+#Q={copy_a,copy_b,res_fmt_chk,res_fmt_chk_ml,sub_init,sub_ac_chk1,sub_ac_chk2,sub_ex,sub_mr,accept,accept2,accept3,accept4,halt_accept,reject,reject2,reject3,reject4,reject5,halt_reject}
 
 ; the finite set of input symbols
 #S = {0,1,x,=}
@@ -27,19 +27,34 @@
 ; copy input
 copy_a 1__ _1_ rr* copy_a
 copy_a x__ ___ *** copy_b
-copy_a =__ ___ r** reject_erase
+copy_a =__ =__ *** reject
 copy_b 1__ __1 r*r copy_a
-copy_b x__ ___ r** reject_erase
-copy_b =__ ___ r** sub_init
+copy_b x__ x__ *** reject
+copy_b =__ ___ r** res_fmt_chk
 
-sub_init 1__ 1__ *ll sub_ex
+res_fmt_chk 1__ 1__ r** res_fmt_chk 
+res_fmt_chk =__ =__ *** reject
+res_fmt_chk x__ =__ *** reject
+res_fmt_chk ___ ___ l** res_fmt_chk_ml
+res_fmt_chk_ml 1__ 1__ l** res_fmt_chk_ml
+res_fmt_chk_ml ___ ___ r** sub_init
+
+sub_init 1__ 1__ *ll sub_ac_chk1
+sub_ac_chk1 1__ 1__ *** accept
+sub_ac_chk1 1_1 1__ *** reject
+sub_ac_chk1 111 111 *** sub_ex
+sub_ac_chk1 11_ 1__ *** reject
+
 sub_ex 111 _11 r*l sub_ex
+sub_ex _1_ ___ *l* sub_ac_chk2
+sub_ex _11 ___ *** reject
 sub_ex 11_ 1__ **r sub_mr
-sub_ex 1_1 1_1 *** reject_erase
-sub_ex _11 _11 *** reject_erase
-sub_ex _1_ _1_ *** accept
+
 sub_mr 1_1 1_1 **r sub_mr
 sub_mr 1__ 1__ *** sub_init
+
+sub_ac_chk2 _1_ ___ *** reject
+sub_ac_chk2 ___ ___ *** accept
 
 ; State accept*: write 'true' on 1st tape
 accept ___ t__ r** accept2
@@ -48,18 +63,10 @@ accept3 ___ u__ r** accept4
 accept4 ___ e__ *** halt_accept
 
 ; State reject*: write 'false' on 1st tape
-reject_erase a__ ___ r** reject_erase
-reject_erase b__ ___ r** reject_erase
-reject_erase _a_ ___ *l* reject_erase
-reject_erase __b ___ **l reject_erase
-reject_erase _ab ___ *rl reject_erase
-reject_erase aa_ ___ rl* reject_erase
-reject_erase a_b ___ r*l reject_erase
-reject_erase ba_ ___ rl* reject_erase
-reject_erase b_b ___ r*l reject_erase
-reject_erase aab ___ rll reject_erase
-reject_erase bab ___ rll reject_erase
-reject_erase ___ ___ *** reject
+reject 1__ ___ r** reject
+reject =__ ___ r** reject
+reject x__ ___ r** reject
+reject b__ ___ r** reject
 reject ___ f__ r** reject2
 reject2 ___ a__ r** reject3
 reject3 ___ l__ r** reject4

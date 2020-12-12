@@ -462,8 +462,8 @@ class TMParser {
       exit(1);
     }
 
-    std::cerr << "error at line " << (wis.get_lineno() + 1)
-              << " column " << (wis.get_column() + 1)
+    std::cerr << "error at line " << (tok.lineno + 1)
+              << " column " << (tok.column + 1)
               << ": " << msg << "\n";
     std::cerr << wis.get_line(tok.lineno);
     if (tok.lineno == wis.get_lineno()) {
@@ -894,12 +894,12 @@ public:
     for (const DeltaEntry &e : delta) {
       if (stateIdMap.find(e.curState) == stateIdMap.end())
         report_error(e.curState,
-            formatv("cannot find state '%s' in actions",
+            formatv("cannot find state '%s' in #Q from actions",
                 std::string(e.curState)),
             wis);
       if (stateIdMap.find(e.nxtState) == stateIdMap.end())
         report_error(e.nxtState,
-            formatv("cannot find state '%s' in actions",
+            formatv("cannot find state '%s' in #Q from actions",
                 std::string(e.nxtState)),
             wis);
     }
