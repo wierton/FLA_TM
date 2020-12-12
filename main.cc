@@ -575,6 +575,7 @@ private:
 
     std::vector<StringToken> retSet;
     while (!wis.endl()) {
+      erase_blank(wis);
       StringToken s = (this->*extractor)(wis);
       pdbg(
           "[parseStringArray] extract '%s'-'%s' "
@@ -591,8 +592,12 @@ private:
         break;
       else if (ch == ',')
         continue;
-      else
-        report_error_here("expected '}' or ',' here", wis);
+      else {
+        StringToken tok;
+        tok.lineno = wis.get_lineno();
+        tok.column = wis.get_column() - 1;
+        report_error(tok, "expected '}' or ',' here", wis);
+      }
     }
 
     erase_blank(wis);
