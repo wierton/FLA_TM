@@ -16,9 +16,9 @@ $(APP): $(OFILES)
 run: $(APP)
 	./$< test/* 1001001
 
-test-case1:
+test-case%:
 	mkdir -p $(O)
-	g++ test/test_case1.cc -o $(O)/$@
+	g++ test/$@.cc -o $(O)/$@
 	./$(O)/$@
 
 -include $(OFILES:.o=.d)
