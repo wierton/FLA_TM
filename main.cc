@@ -118,7 +118,6 @@ class TuringMachine {
   char blank = '_';
   std::set<unsigned> finalStates;
   unsigned nr_steps = 0u;
-  bool finished = false;
 
   struct TransitionInfo {
     //                  nxtSym, action
@@ -149,17 +148,11 @@ public:
     return ret;
   }
 
-  bool isTerminated() const {
-    return finished ||
-           finalStates.find(state) != finalStates.end();
-  }
-
-  void runOneStep() {
+  bool runOneStep() {
     if (state >= delta.size()) {
       // cannot proceed since no guidelines about current
       // state
-      finished = true;
-      return;
+      return true;
     }
 
     auto &m = delta[state];
@@ -169,8 +162,7 @@ public:
     if (it == m.end()) {
       // cannot proceed since no guidelines about current
       // tape symbols
-      finished = true;
-      return;
+      return true;
     }
 
     auto &info = it->second;
@@ -184,15 +176,18 @@ public:
       if (i < tapes.size())
         tapes[i].setAndMove(step[i].first, step[i].second);
     state = info.nxtState;
+    return false;
   }
 
   std::string run() {
-    while (!isTerminated()) {
-      if (opt::verbose) printOneStep();
-      runOneStep();
-      nr_steps++;
-    }
     if (opt::verbose) printOneStep();
+    while (true) {
+      if (runOneStep()) break;
+      nr_steps++;
+      if (opt::verbose) printOneStep();
+      if (finalStates.find(state) != finalStates.end())
+        break;
+    }
 
     if (tapes.empty()) return "";
     return tapes.at(0).get_contents();
@@ -463,8 +458,8 @@ class TMParser {
     }
 
     std::cerr << "error at line " << (tok.lineno + 1)
-              << " column " << (tok.column + 1)
-              << ": " << msg << "\n";
+              << " column " << (tok.column + 1) << ": "
+              << msg << "\n";
     std::cerr << wis.get_line(tok.lineno);
     if (tok.lineno == wis.get_lineno()) {
       char ch = wis.peek();
@@ -894,12 +889,14 @@ public:
     for (const DeltaEntry &e : delta) {
       if (stateIdMap.find(e.curState) == stateIdMap.end())
         report_error(e.curState,
-            formatv("cannot find state '%s' in #Q from actions",
+            formatv(
+                "cannot find state '%s' in #Q from actions",
                 std::string(e.curState)),
             wis);
       if (stateIdMap.find(e.nxtState) == stateIdMap.end())
         report_error(e.nxtState,
-            formatv("cannot find state '%s' in #Q from actions",
+            formatv(
+                "cannot find state '%s' in #Q from actions",
                 std::string(e.nxtState)),
             wis);
     }
