@@ -2,13 +2,13 @@
 ; Input: a string of 0's and 1's, e.g. '11x111=11111'
 
 ; the finite set of states
-#Q={copy_a,copy_b,res_fmt_chk,res_fmt_chk_rej_ml,res_fmt_chk_ml,sub_init,sub_ac_chk1,sub_ac_chk2,sub_ex,sub_mr,accept,accept2,accept3,accept4,halt_accept,reject,reject2,reject3,reject4,reject5,halt_reject}
+#Q={copy_a,copy_b,ab_chk_1,ab_chk_2,res_fmt_chk,res_fmt_chk_rej_ml,res_fmt_chk_ml,sub_init,sub_ac_chk1,sub_ac_chk2,sub_ex,sub_mr,accept,accept2,accept3,accept4,halt_accept,reject,reject2,reject3,reject4,reject5,halt_reject}
 
 ; the finite set of input symbols
-#S = {0,1,x,=}
+#S = {1,x,=}
 
 ; the complete set of tape symbols
-#G = {x,=,0,1,_,t,r,u,e,f,a,l,s}
+#G = {x,=,1,_,t,r,u,e,f,a,l,s}
 
 ; the start state
 #q0 = copy_a
@@ -27,9 +27,11 @@
 ; copy input
 copy_a 1__ _1_ rr* copy_a
 copy_a x__ ___ r** copy_b
+copy_a ___ ___ *** reject
 copy_a =__ =__ *** reject
 copy_b 1__ __1 r*r copy_b
 copy_b x__ x__ *** reject
+copy_b ___ ___ *** reject
 copy_b =__ ___ r** res_fmt_chk
 
 res_fmt_chk 1__ 1__ r** res_fmt_chk 
@@ -37,11 +39,18 @@ res_fmt_chk =__ =__ *** res_fmt_chk_rej_ml
 res_fmt_chk x__ x__ *** res_fmt_chk_rej_ml
 res_fmt_chk ___ ___ l** res_fmt_chk_ml
 res_fmt_chk_ml 1__ 1__ l** res_fmt_chk_ml
-res_fmt_chk_ml ___ ___ r** sub_init
+res_fmt_chk_ml ___ ___ r** ab_chk_1
 res_fmt_chk_rej_ml 1__ 1__ l** res_fmt_chk_rej_ml
 res_fmt_chk_rej_ml =__ =__ l** res_fmt_chk_rej_ml
 res_fmt_chk_rej_ml x__ x__ l** res_fmt_chk_rej_ml
 res_fmt_chk_rej_ml ___ ___ r** reject
+
+ab_chk_1 1__ 1__ *ll ab_chk_2
+ab_chk_1 ___ ___ *** reject
+ab_chk_2 1__ 1__ *** reject
+ab_chk_2 1_1 1__ *** reject
+ab_chk_2 11_ 1__ *** reject
+ab_chk_2 111 111 *rr sub_init
 
 sub_init ___ 1__ *** reject
 sub_init 1__ 1__ *ll sub_ac_chk1

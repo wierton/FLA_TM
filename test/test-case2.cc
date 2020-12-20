@@ -112,22 +112,12 @@ TEST(case2_2) {
 
 TEST(case2_3) {
   for (int i = 0; i < 100000; i++) {
-    int a = rand() % 5 + 1;
-    int b = rand() % 5 + 1;
-    int res = rand() % 25;
-
     std::string t;
-    for (int i = 0; i < a; i++) t.push_back('1');
-    t.push_back('x');
-    for (int i = 0; i < b; i++) t.push_back('1');
-    t.push_back('=');
-    for (int i = 0; i < res; i++) t.push_back('1');
-
-    for (int i = rand() % 5 + 1; i >= 0; i--) {
-      switch (rand() % 3) {
-      case 0: t.insert(rand() % t.size(), "1"); break;
-      case 1: t.insert(rand() % t.size(), "x"); break;
-      case 2: t.insert(rand() % t.size(), "="); break;
+    for (int i = rand() % 20; i > 0; i--) {
+      switch (rand() % 5) {
+      case 0: t.push_back('x'); break;
+      case 1: t.push_back('='); break;
+      default: t.push_back('1'); break;
       }
     }
 
